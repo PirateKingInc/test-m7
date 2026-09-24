@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { OBSTACLES, WORLD, DRAGON, DIFFICULTY } from '../src/config.js';
 import { createRng } from '../src/rng.js';
 import { nextGapY, gapRect, GAP_MIN_Y, GAP_MAX_Y } from '../src/gaps.js';
+import { MAX_STAGE, maxGapDeltaFor, scrollSpeedFor } from '../src/difficulty.js';
 import { createGame, step } from '../src/game.js';
 import { climbReach, dropReach } from './reach.js';
 
@@ -43,6 +44,24 @@ test(`${SEEDS * PER_SEED} placements: on-screen, clear of margins, shift ≤ max
   assert.ok(GAP_MAX_Y - hi < 2, `highest centre ${hi}`);
 });
 
+test('every difficulty stage: 2,000 placements each, all within bounds and that stage\'s max shift', () => {
+  // 41 stages × 2,000 = 82,000 more placements, each checked against the
+  // shift limit of the stage it was generated for.
+  for (let stage = 0; stage <= MAX_STAGE; stage++) checkSequence(1000 + stage, maxGapDeltaFor(stage), 2_000);
+});
+
+test('every difficulty stage: consecutive gaps are reachable with that stage\'s physics', () => {
+  for (let stage = 0; stage <= MAX_STAGE; stage++) {
+    const d = maxGapDeltaFor(stage);
+    // Gaps spawned at this stage may be flown at a later (faster) stage, so
+    // check against both this stage's speed and the capped top speed.
+    for (const speed of [scrollSpeedFor(stage), scrollSpeedFor(MAX_STAGE)]) {
+      assert.ok(climbReach(speed) >= d, `stage ${stage} @${speed}px/s: climb ${climbReach(speed).toFixed(1)} < ${d}`);
+      assert.ok(dropReach(speed) >= d, `stage ${stage} @${speed}px/s: drop ${dropReach(speed).toFixed(1)} < ${d}`);
+    }
+  }
+});
+
 test('safe band leaves the configured margin at both ends', () => {
   assert.equal(gapRect(GAP_MIN_Y).top, WORLD.ceilingY + OBSTACLES.edgeMargin);
   assert.equal(gapRect(GAP_MAX_Y).bottom, WORLD.groundY - OBSTACLES.edgeMargin);
@@ -77,7 +96,7 @@ test('same seed -> same sequence; different seeds -> different sequences', () =>
 });
 
 test('the game spawns exactly the seeded sequence at constant spacing', () => {
-  const g = createGame({ seed: 99 });
+  const g = createGame({ seed: 99, fixedStage: 0 });
   step(g, true);
   const rng = createRng(99);
   let prev = DRAGON.startY;
