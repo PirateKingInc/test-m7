@@ -1,6 +1,19 @@
 import { OBSTACLES, WORLD } from './config.js';
 import { overlaps } from './physics.js';
 
+// Safe band for gap CENTRES: the whole gap plus its margin stays on screen
+// and clear of the ceiling and the ground.
+export const GAP_MIN_Y = WORLD.ceilingY + OBSTACLES.edgeMargin + OBSTACLES.gapSize / 2;
+export const GAP_MAX_Y = WORLD.groundY - OBSTACLES.edgeMargin - OBSTACLES.gapSize / 2;
+
+// Next gap centre: uniform within the safe band AND within maxDelta of the
+// previous gap centre, so consecutive gaps are always reachable.
+export function nextGapY(rng, prevY, maxDelta) {
+  const lo = Math.max(GAP_MIN_Y, prevY - maxDelta);
+  const hi = Math.min(GAP_MAX_Y, prevY + maxDelta);
+  return lo + rng() * (hi - lo);
+}
+
 export function gapRect(gapY) {
   return {
     top: gapY - OBSTACLES.gapSize / 2,

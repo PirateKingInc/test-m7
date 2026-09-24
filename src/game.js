@@ -1,16 +1,22 @@
 // Pure game logic: no DOM, no canvas, no clocks. Advances only via step().
 import { DRAGON, OBSTACLES, WORLD, DIFFICULTY, DT } from './config.js';
 import { stepDragon, dragonBox, outOfBounds } from './physics.js';
-import { hitsObstacle } from './gaps.js';
+import { hitsObstacle, nextGapY } from './gaps.js';
+import { createRng } from './rng.js';
 
-export function createGame() {
-  const state = { mode: 'title', tick: 0 };
-  resetRun(state);
+// opts.seed       run seed: the gap sequence is a pure function of it
+// opts.gapSource  test hook, (rng, prevY, maxDelta) => gapY, replaces nextGapY
+export function createGame(opts = {}) {
+  const state = { mode: 'title', tick: 0, gapSource: opts.gapSource || nextGapY };
+  resetRun(state, opts.seed ?? 1);
   state.mode = 'title';
   return state;
 }
 
-export function resetRun(state) {
+export function resetRun(state, seed) {
+  state.seed = seed >>> 0;
+  state.rng = createRng(state.seed);
+  state.lastGapY = DRAGON.startY; // the first gap is measured from the start height
   state.mode = 'playing';
   state.dragon = { y: DRAGON.startY, vy: 0, prevY: DRAGON.startY };
   state.obstacles = [];
@@ -28,7 +34,9 @@ function spawnObstacles(state) {
   let last = obs[obs.length - 1];
   while (!last || last.x + OBSTACLES.spacing < WORLD.width + OBSTACLES.width) {
     const x = last ? last.x + OBSTACLES.spacing : OBSTACLES.firstX;
-    last = { id: state.nextId++, x, prevX: x, gapY: DRAGON.startY, variant: 'tower' };
+    const gapY = state.gapSource(state.rng, state.lastGapY, DIFFICULTY.maxGapDelta.start);
+    state.lastGapY = gapY;
+    last = { id: state.nextId++, x, prevX: x, gapY, variant: 'tower' };
     obs.push(last);
   }
 }
@@ -50,7 +58,7 @@ export function step(state, flap) {
   for (const ob of state.obstacles) ob.prevX = ob.x;
   if (state.mode !== 'playing') {
     if (!flap) return [];
-    resetRun(state);
+    resetRun(state, state.seed);
     return ['start', ...playTick(state, true)];
   }
   return playTick(state, flap);

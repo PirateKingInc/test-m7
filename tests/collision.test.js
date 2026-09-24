@@ -80,11 +80,11 @@ test('game loop uses the same collision: flying level through the gap centre is 
   const g = createGame();
   step(g, true);
   // Pin the dragon to the gap centre (no gravity) and let 3 obstacles pass.
+  const current = () => g.obstacles.find((o) => o.x + OBSTACLES.width > dragonLeft - 2);
   for (let t = 0; t < 60 * 6; t++) {
-    g.dragon.y = g.obstacles[0].gapY;
+    g.dragon.y = current().gapY;
     g.dragon.vy = 0;
     step(g, false);
-    g.dragon.y = g.obstacles[0].gapY;
     assert.equal(g.mode, 'playing', `tick ${t}`);
   }
 });
@@ -107,7 +107,8 @@ test('obstacles scroll left at constant speed and keep constant spacing', () => 
   for (let t = 0; t < 600; t++) {
     const before = g.obstacles.map((o) => [o.id, o.x]);
     const known = new Set(before.map(([id]) => id));
-    g.dragon.y = 280;
+    // Pin the dragon inside the gap it is flying through; this test is about the stream.
+    g.dragon.y = g.obstacles.find((o) => o.x + OBSTACLES.width > dragonLeft - 2).gapY;
     g.dragon.vy = 0;
     step(g, false);
     for (const [id, x] of before) {
