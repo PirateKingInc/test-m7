@@ -6,15 +6,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # push the built site to the gh-pages branch
+  contents: read
   pages: write
+  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,23 +30,48 @@ jobs:
           cp index.html _site/
           cp -r src _site/
           touch _site/.nojekyll
-      - name: Publish to gh-pages branch
-        run: |
-          cd _site
-          git init -q -b gh-pages
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "Deploy ${GITHUB_SHA}"
-          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
-      - name: Make sure Pages serves the gh-pages branch
+      - name: Make sure Pages builds from GitHub Actions
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .html_url; then
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds" --jq .status || true
-          else
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/pages" \
-              -f "source[branch]=gh-pages" -f "source[path]=/" --jq .html_url
+          api="repos/${GITHUB_REPOSITORY}/pages"
+          if [ "$(gh api "$api" --jq .build_type)" != "workflow" ]; then
+            gh api -X PUT "$api" -f build_type=workflow || gh api -X POST "$api" -f build_type=workflow
           fi
+          gh api "$api" --jq '{build_type, status, html_url}'
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poll the live URL until it serves the game
+        env:
+          URL: ${{ needs.deploy.outputs.page_url }}
+        run: |
+          for i in $(seq 1 60); do
+            code=$(curl -s -o page.html -w '%{http_code}' "$URL" || true)
+            echo "attempt $i: HTTP $code"
+            if [ "$code" = 200 ] && grep -q 'Kindlewing' page.html; then
+              echo "Live: $URL"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$URL did not serve the game within 10 minutes"
+          exit 1
