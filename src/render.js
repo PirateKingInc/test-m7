@@ -1,6 +1,7 @@
 // Canvas renderer. Reads game state, never writes it.
-import { WORLD, DRAGON, PHYSICS } from './config.js';
-import { drawDragon } from './art.js';
+import { WORLD, DRAGON, PHYSICS, OBSTACLES, DT } from './config.js';
+import { drawDragon, makeObstacleSprites } from './art.js';
+import { gapRect } from './gaps.js';
 
 const VW = WORLD.width;
 const VH = WORLD.height;
@@ -8,7 +9,7 @@ const FONT = 'Georgia, "Times New Roman", serif';
 
 export function createRenderer(canvas, win = window) {
   const ctx = canvas.getContext('2d', { alpha: false });
-  let k = 1, offX = 0, offY = 0;
+  let k = 1, offX = 0, offY = 0, sprites = null;
   const view = { time: 0, angle: 0, wing: 1 };
 
   // Fit the 360×640 world into the window (letterboxed), at device resolution.
@@ -23,6 +24,17 @@ export function createRenderer(canvas, win = window) {
     k = scale * dpr;
     offX = Math.round((canvas.width - VW * k) / 2);
     offY = Math.round((canvas.height - VH * k) / 2);
+    sprites = makeObstacleSprites(k); // pre-rendered at device resolution
+  }
+
+  // Obstacle art is cropped from tall pre-rendered pieces so it lines up
+  // exactly with the two hitbox rectangles.
+  function drawObstacle(ob, x) {
+    const { top, bottom } = gapRect(ob.gapY);
+    const sp = sprites[ob.variant];
+    const W = OBSTACLES.width, H = WORLD.groundY;
+    ctx.drawImage(sp.top, 0, (H - top) * k, W * k, top * k, x, 0, W, top);
+    ctx.drawImage(sp.bottom, 0, 0, W * k, (H - bottom) * k, x, bottom, W, H - bottom);
   }
 
   function text(str, x, y, size) {
@@ -52,13 +64,25 @@ export function createRenderer(canvas, win = window) {
     g.addColorStop(1, '#fdf1d0');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, VW, WORLD.groundY);
+
+    const playing = state.mode === 'playing';
+    if (state.mode !== 'title') {
+      for (const ob of state.obstacles) {
+        const x = playing ? ob.prevX + (ob.x - ob.prevX) * alpha : ob.x;
+        if (x < VW && x + OBSTACLES.width > 0) drawObstacle(ob, x);
+      }
+    }
+
+    // ground, scrolling with the obstacles
+    const dist = state.distance - (playing ? state.speed * DT * (1 - alpha) : 0);
     ctx.fillStyle = '#8b5a2b';
     ctx.fillRect(0, WORLD.groundY, VW, VH - WORLD.groundY);
+    ctx.fillStyle = '#7a4d24';
+    for (let x = -(dist % 24); x < VW; x += 24) ctx.fillRect(x, WORLD.groundY + 22, 14, 7);
     ctx.fillStyle = '#6db34a';
     ctx.fillRect(0, WORLD.groundY, VW, 10);
 
     const d = state.dragon;
-    const playing = state.mode === 'playing';
     let y = playing ? d.prevY + (d.y - d.prevY) * alpha : d.y;
     let target = 0;
     if (state.mode === 'title') y += Math.sin(view.time * 3) * 7;

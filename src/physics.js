@@ -18,6 +18,11 @@ export function dragonBox(dragon) {
   };
 }
 
+// Positive-area overlap. Rectangles that merely share an edge do NOT collide.
+export function overlaps(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
 // Leaving the playfield: penetrating the ceiling or the ground.
 // Exactly touching the line (top === ceilingY / bottom === groundY) is safe.
 export function outOfBounds(box) {

@@ -1,5 +1,7 @@
 // All art is drawn in code. Anything static is pre-rendered once into an
 // offscreen canvas at device resolution, so a frame is a few drawImage calls.
+import { WORLD, OBSTACLES } from './config.js';
+import { createRng } from './rng.js';
 
 export function makeCanvas(w, h) {
   const c = document.createElement('canvas');
@@ -111,4 +113,84 @@ function drawWing(ctx, wing, fill, edge, scale) {
   ctx.moveTo(4, -6);
   ctx.lineTo(tipX, tipY);
   ctx.stroke();
+}
+
+// -------------------------------------------------------------- obstacles
+// Each variant renders a TOP piece (gap edge at its bottom) and a BOTTOM
+// piece (gap edge at its top), each OBSTACLES.width × groundY world px.
+// Art stays inside the rectangle: what you see is what you hit.
+const W = OBSTACLES.width;
+const H = WORLD.groundY;
+
+function masonry(ctx, x, y, w, h, base, mortar, rowH, rng, jitter = 0) {
+  ctx.fillStyle = base;
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = mortar;
+  ctx.lineWidth = 1.2;
+  let row = 0;
+  for (let yy = y; yy < y + h; yy += rowH, row++) {
+    ctx.beginPath();
+    ctx.moveTo(x, yy);
+    ctx.lineTo(x + w, yy);
+    ctx.stroke();
+    let xx = x + (row % 2 ? -rowH * 0.7 : 0);
+    while (xx < x + w) {
+      const bw = rowH * 1.4 + (jitter ? rng() * jitter : 0);
+      xx += bw;
+      if (xx > x && xx < x + w) {
+        ctx.beginPath();
+        ctx.moveTo(xx, yy);
+        ctx.lineTo(xx, Math.min(yy + rowH, y + h));
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function shade(ctx, x, y, w, h) {
+  const g = ctx.createLinearGradient(x, 0, x + w, 0);
+  g.addColorStop(0, 'rgba(255,255,255,0.18)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.32)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+}
+
+const PAINTERS = {
+  tower(ctx, top, rng) {
+    masonry(ctx, 0, 0, W, H, '#8d929c', '#5e626b', 14, rng);
+    // arrow slits
+    ctx.fillStyle = '#2b2d33';
+    for (let y = top ? H - 70 : 50; top ? y > 0 : y < H; y += top ? -90 : 90) ctx.fillRect(W / 2 - 3, y, 6, 20);
+    // battlements at the gap edge: 5 merlons, shallow 6px crenels
+    const edge = top ? H : 0;
+    ctx.fillStyle = '#9da2ab';
+    ctx.fillRect(0, top ? H - 16 : 0, W, 16);
+    ctx.strokeStyle = '#5e626b';
+    ctx.strokeRect(0.5, top ? H - 16 : 0.5, W - 1, 15.5);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 4; i++) {
+      const x = 8 + i * 14 + 1;
+      ctx.fillRect(x, top ? edge - 6 : edge, 6, 6);
+    }
+    ctx.restore();
+    shade(ctx, 0, 0, W, H);
+  },
+};
+
+export function makeObstacleSprites(k) {
+  const out = {};
+  for (const v of Object.keys(PAINTERS)) {
+    const pieces = {};
+    for (const top of [true, false]) {
+      const c = makeCanvas(W * k, H * k);
+      const ctx = c.getContext('2d');
+      ctx.scale(k, k);
+      PAINTERS[v](ctx, top, createRng(v.length * 7919 + (top ? 1 : 2)));
+      pieces[top ? 'top' : 'bottom'] = c;
+    }
+    out[v] = pieces;
+  }
+  return out;
 }
