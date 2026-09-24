@@ -1,6 +1,7 @@
 // Canvas renderer. Reads game state, never writes it.
 import { WORLD, DRAGON, PHYSICS, OBSTACLES, DT, RESTART_LOCK_TICKS, SCENERY } from './config.js';
 import { drawDragon, makeObstacleSprites, makeBiomeLayers, makeCanvas } from './art.js';
+import { shakeOffset } from './effects.js';
 import { gapRect } from './gaps.js';
 
 const VW = WORLD.width;
@@ -12,7 +13,7 @@ export function createRenderer(canvas, win = window) {
   const ctx = canvas.getContext('2d', { alpha: false });
   let k = 1, offX = 0, offY = 0, sprites = null, fade = null;
   const layers = new Map();
-  const view = { time: 0, angle: 0, wing: 1, from: 0, to: 0, t: 1 };
+  const view = { time: 0, angle: 0, from: 0, to: 0, t: 1 };
 
   // Fit the 360×640 world into the window (letterboxed), at device resolution.
   function resize() {
@@ -112,10 +113,9 @@ export function createRenderer(canvas, win = window) {
     ctx.closePath();
   }
 
-  function draw(state, alpha, frameDt, flapped) {
+  // fx is the cosmetic effects state from effects.js (particles, shake, …).
+  function draw(state, alpha, fx, frameDt) {
     view.time += frameDt;
-    if (flapped) view.wing = 0;
-    view.wing = Math.min(1, view.wing + frameDt * 3.2);
     if (state.biome !== view.to) {
       view.from = view.to;
       view.to = state.biome;
@@ -126,7 +126,8 @@ export function createRenderer(canvas, win = window) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#120d1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.setTransform(k, 0, 0, k, offX, offY);
+    const [sx, sy] = shakeOffset(fx);
+    ctx.setTransform(k, 0, 0, k, offX + sx * k, offY + sy * k);
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, VW, VH);
@@ -148,6 +149,13 @@ export function createRenderer(canvas, win = window) {
 
     drawScenery(dist, drawGround); // ground scrolls with the obstacles
 
+    for (const p of fx.particles) {
+      ctx.globalAlpha = 1 - p.age / p.life;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+
     const d = state.dragon;
     let y = playing ? d.prevY + (d.y - d.prevY) * alpha : d.y;
     let target = 0;
@@ -157,11 +165,16 @@ export function createRenderer(canvas, win = window) {
     ctx.save();
     ctx.translate(DRAGON.x, y);
     ctx.rotate(view.angle);
-    drawDragon(ctx, state.mode === 'title' ? 0.5 + 0.5 * Math.sin(view.time * 9) : view.wing);
+    drawDragon(ctx, state.mode === 'title' ? 0.5 + 0.5 * Math.sin(view.time * 9) : fx.wing);
     ctx.restore();
 
+    if (fx.flash > 0) {
+      ctx.fillStyle = `rgba(255,245,220,${fx.flash * 0.7})`;
+      ctx.fillRect(0, 0, VW, VH);
+    }
+
     if (state.mode === 'title') drawTitle(state);
-    else if (state.mode === 'playing') text(String(state.score), VW / 2, 78, 56);
+    else if (state.mode === 'playing') text(String(state.score), VW / 2, 78, 56 * (1 + fx.pop * 0.25));
     else drawGameOver(state);
     ctx.restore();
   }
