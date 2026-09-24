@@ -1,13 +1,19 @@
 // Pure game logic: no DOM, no canvas, no clocks. Advances only via step().
-import { DRAGON, OBSTACLES, WORLD, DIFFICULTY, DT } from './config.js';
+import { DRAGON, OBSTACLES, WORLD, DIFFICULTY, DT, RESTART_LOCK_TICKS } from './config.js';
 import { stepDragon, dragonBox, outOfBounds } from './physics.js';
 import { hitsObstacle, nextGapY } from './gaps.js';
 import { createRng } from './rng.js';
 
 // opts.seed       run seed: the gap sequence is a pure function of it
+// opts.best       best score carried in (e.g. from storage)
 // opts.gapSource  test hook, (rng, prevY, maxDelta) => gapY, replaces nextGapY
 export function createGame(opts = {}) {
-  const state = { mode: 'title', tick: 0, gapSource: opts.gapSource || nextGapY };
+  const state = {
+    mode: 'title',
+    tick: 0,
+    best: Math.max(0, opts.best | 0),
+    gapSource: opts.gapSource || nextGapY,
+  };
   resetRun(state, opts.seed ?? 1);
   state.mode = 'title';
   return state;
@@ -21,10 +27,19 @@ export function resetRun(state, seed) {
   state.dragon = { y: DRAGON.startY, vy: 0, prevY: DRAGON.startY };
   state.obstacles = [];
   state.nextId = 0;
+  state.score = 0;
+  state.newBest = false;
   state.distance = 0;
   state.runTicks = 0;
+  state.overTicks = 0;
   state.speed = DIFFICULTY.scrollSpeed.start;
   spawnObstacles(state);
+}
+
+// Each restart gets a new seed derived from the last, so a whole session of
+// runs is reproducible from its first seed.
+export function nextSeed(seed) {
+  return (Math.imul(seed ^ (seed >>> 16), 0x45d9f3b) + 0x3c6ef372) >>> 0;
 }
 
 // Keep the stream topped up: a new obstacle appears off-screen right as soon
@@ -36,7 +51,7 @@ function spawnObstacles(state) {
     const x = last ? last.x + OBSTACLES.spacing : OBSTACLES.firstX;
     const gapY = state.gapSource(state.rng, state.lastGapY, DIFFICULTY.maxGapDelta.start);
     state.lastGapY = gapY;
-    last = { id: state.nextId++, x, prevX: x, gapY, variant: 'tower' };
+    last = { id: state.nextId++, x, prevX: x, gapY, variant: 'tower', passed: false };
     obs.push(last);
   }
 }
@@ -54,13 +69,34 @@ export function collidingObstacle(state, box) {
 // the previous tick. Returns a list of event names for audio / effects.
 export function step(state, flap) {
   state.tick++;
-  state.dragon.prevY = state.dragon.y;
+  const d = state.dragon;
+  d.prevY = d.y;
   for (const ob of state.obstacles) ob.prevX = ob.x;
-  if (state.mode !== 'playing') {
+
+  if (state.mode === 'title') {
     if (!flap) return [];
     resetRun(state, state.seed);
     return ['start', ...playTick(state, true)];
   }
+
+  if (state.mode === 'over') {
+    state.overTicks++;
+    if (flap && state.overTicks >= RESTART_LOCK_TICKS) {
+      resetRun(state, nextSeed(state.seed));
+      return ['start', ...playTick(state, true)];
+    }
+    // The world freezes; the dragon tumbles down and comes to rest on the ground.
+    const floor = WORLD.groundY - DRAGON.hitboxH / 2;
+    if (d.y < floor) {
+      stepDragon(d, false);
+      if (d.y >= floor) {
+        d.y = floor;
+        d.vy = 0;
+      }
+    }
+    return [];
+  }
+
   return playTick(state, flap);
 }
 
@@ -79,7 +115,22 @@ function playTick(state, flap) {
   const box = dragonBox(state.dragon);
   if (outOfBounds(box) || collidingObstacle(state, box)) {
     state.mode = 'over';
+    state.overTicks = 0;
+    if (state.score > state.best) {
+      state.best = state.score;
+      state.newBest = true;
+    }
     events.push('hit');
+    return events;
+  }
+
+  // Score once the obstacle's trailing edge is fully behind the hitbox.
+  for (const ob of state.obstacles) {
+    if (!ob.passed && ob.x + OBSTACLES.width < box.x) {
+      ob.passed = true;
+      state.score++;
+      events.push('score');
+    }
   }
   return events;
 }
