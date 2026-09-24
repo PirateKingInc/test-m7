@@ -4,8 +4,12 @@ import { DT } from './config.js';
 import { createGame, step } from './game.js';
 import { createRenderer } from './render.js';
 
+// ?seed=N replays a specific gap sequence; otherwise every visit is fresh.
+const seedParam = Number.parseInt(new URLSearchParams(location.search).get('seed') ?? '', 10);
+const seed = Number.isFinite(seedParam) ? seedParam : (Math.random() * 2 ** 32) >>> 0;
+
 const canvas = document.getElementById('game');
-const state = createGame();
+const state = createGame({ seed });
 const renderer = createRenderer(canvas);
 window.kindlewing = { state }; // handy for debugging and browser smoke tests
 

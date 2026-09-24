@@ -48,6 +48,13 @@ export const DIFFICULTY = {
   maxGapDelta: { start: 90, cap: 150 }, // max vertical shift between consecutive gap centres, px
 };
 
+// Fairness analysis assumes a player can tap at most once every this many
+// ticks (9 ticks ≈ 6.7 taps/s — brisk but comfortably human). The autopilot
+// in the fairness proof obeys the same limit.
+export const FAIRNESS = {
+  minFlapIntervalTicks: 9,
+};
+
 // Cosmetic backdrop milestones. No gameplay effect.
 export const SCENERY = {
   pointsPerBiome: 10,
