@@ -1,18 +1,21 @@
 // Pure game logic: no DOM, no canvas, no clocks. Advances only via step().
-import { DRAGON, OBSTACLES, WORLD, DIFFICULTY, DT, RESTART_LOCK_TICKS } from './config.js';
+import { DRAGON, OBSTACLES, WORLD, DT, RESTART_LOCK_TICKS } from './config.js';
 import { stepDragon, dragonBox, outOfBounds } from './physics.js';
 import { hitsObstacle, nextGapY } from './gaps.js';
 import { createRng } from './rng.js';
+import { stageFor, scrollSpeedFor, maxGapDeltaFor } from './difficulty.js';
 
 // opts.seed       run seed: the gap sequence is a pure function of it
 // opts.best       best score carried in (e.g. from storage)
 // opts.gapSource  test hook, (rng, prevY, maxDelta) => gapY, replaces nextGapY
+// opts.fixedStage test hook: pin difficulty to one stage regardless of score
 export function createGame(opts = {}) {
   const state = {
     mode: 'title',
     tick: 0,
     best: Math.max(0, opts.best | 0),
     gapSource: opts.gapSource || nextGapY,
+    fixedStage: opts.fixedStage,
   };
   resetRun(state, opts.seed ?? 1);
   state.mode = 'title';
@@ -32,8 +35,12 @@ export function resetRun(state, seed) {
   state.distance = 0;
   state.runTicks = 0;
   state.overTicks = 0;
-  state.speed = DIFFICULTY.scrollSpeed.start;
+  state.speed = scrollSpeedFor(currentStage(state));
   spawnObstacles(state);
+}
+
+export function currentStage(state) {
+  return state.fixedStage ?? stageFor(state.score);
 }
 
 // Each restart gets a new seed derived from the last, so a whole session of
@@ -49,7 +56,7 @@ function spawnObstacles(state) {
   let last = obs[obs.length - 1];
   while (!last || last.x + OBSTACLES.spacing < WORLD.width + OBSTACLES.width) {
     const x = last ? last.x + OBSTACLES.spacing : OBSTACLES.firstX;
-    const gapY = state.gapSource(state.rng, state.lastGapY, DIFFICULTY.maxGapDelta.start);
+    const gapY = state.gapSource(state.rng, state.lastGapY, maxGapDeltaFor(currentStage(state)));
     state.lastGapY = gapY;
     last = { id: state.nextId++, x, prevX: x, gapY, variant: 'tower', passed: false };
     obs.push(last);
@@ -106,6 +113,7 @@ function playTick(state, flap) {
   if (flap) events.push('flap');
   stepDragon(state.dragon, flap);
 
+  state.speed = scrollSpeedFor(currentStage(state));
   const dx = state.speed * DT;
   state.distance += dx;
   for (const ob of state.obstacles) ob.x -= dx;
