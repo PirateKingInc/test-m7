@@ -163,7 +163,12 @@ the simulation reads it.
 * **Fairness proof** — for **every stage 0‥40**, the scripted
   perfect-timing bot (`src/bot.js`, ≤ 6.7 taps/s) survives long random gap
   sequences *and* adversarial ones (max-shift zig-zags, full-range sweeps,
-  hugging ceiling / ground) with difficulty pinned at that stage.
+  hugging ceiling / ground, all-maximal random shifts, repeated maximal
+  climbs) with difficulty pinned at that stage. Every adversary is checked
+  to obey the generator's own invariants, so it is a worst case the real
+  game can actually produce. Sequence length scales with
+  `FAIRNESS_LENGTH` (default 1000 → ~470k obstacles per CI run); e.g.
+  `FAIRNESS_LENGTH=100000 npm test` for an arbitrarily long proof.
 * **Gap generation** — ≥ 10,000 placements per check (hundreds of thousands
   total) assert: never off-screen, never inside the edge margins, never a
   shift greater than the stage's `maxGapDelta`, and `maxGapDelta` never
