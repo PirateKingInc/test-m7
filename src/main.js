@@ -1,10 +1,11 @@
 // Browser entry point: wires input and the fixed-timestep loop around the
 // pure game logic.
-import { DT } from './config.js';
+import { DT, DRAGON } from './config.js';
 import { createGame, step } from './game.js';
 import { createRenderer } from './render.js';
 import { loadBest, saveBest } from './storage.js';
 import { createAudio } from './audio.js';
+import { createEffects, onEvents as fxEvents, updateEffects } from './effects.js';
 
 // Even touching window.localStorage can throw (e.g. blocked cookies).
 function getStorage() {
@@ -24,6 +25,7 @@ const canvas = document.getElementById('game');
 const state = createGame({ seed, best: loadBest(storage) });
 const renderer = createRenderer(canvas);
 const audio = createAudio(window.AudioContext || window.webkitAudioContext);
+const fx = createEffects();
 window.kindlewing = { state }; // handy for debugging and browser smoke tests
 
 // ---- the single input: tap / click / Space --------------------------------
@@ -62,19 +64,19 @@ function frame(now) {
   last = now;
   if (dt > 0.25) dt = 0.25; // don't spiral after a stall
   acc += dt;
-  let flapped = false;
   while (acc >= DT) {
     const events = step(state, flapQueued);
     flapQueued = false;
     acc -= DT;
-    if (events.includes('flap')) flapped = true;
+    fxEvents(fx, events, DRAGON.x, state.dragon.y);
     if (events.includes('hit') && state.newBest) {
       saveBest(storage, state.best);
       events.push('newBest');
     }
     audio.onEvents(events);
   }
-  renderer.draw(state, acc / DT, dt, flapped);
+  updateEffects(fx, dt);
+  renderer.draw(state, acc / DT, fx, dt);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
