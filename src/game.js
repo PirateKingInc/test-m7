@@ -1,5 +1,5 @@
 // Pure game logic: no DOM, no canvas, no clocks. Advances only via step().
-import { DRAGON, OBSTACLES, WORLD, DT, RESTART_LOCK_TICKS } from './config.js';
+import { DRAGON, OBSTACLES, WORLD, DT, RESTART_LOCK_TICKS, SCENERY } from './config.js';
 import { stepDragon, dragonBox, outOfBounds } from './physics.js';
 import { hitsObstacle, nextGapY } from './gaps.js';
 import { createRng } from './rng.js';
@@ -39,6 +39,7 @@ export function resetRun(state, seed) {
   state.distance = 0;
   state.runTicks = 0;
   state.overTicks = 0;
+  state.biome = 0;
   state.speed = scrollSpeedFor(currentStage(state));
   spawnObstacles(state);
 }
@@ -65,6 +66,12 @@ function spawnObstacles(state) {
     last = { id: state.nextId++, x, prevX: x, gapY, variant: pickVariant(state), passed: false };
     obs.push(last);
   }
+}
+
+// Cosmetic backdrop milestone: which biome the score has reached. Nothing in
+// the simulation reads it; it only drives the renderer (and a 'biome' event).
+export function biomeFor(score) {
+  return Math.floor(score / SCENERY.pointsPerBiome) % SCENERY.biomes.length;
 }
 
 // Cosmetic only: every variant reskins the same two hitbox rectangles.
@@ -152,6 +159,11 @@ function playTick(state, flap) {
       ob.passed = true;
       state.score++;
       events.push('score');
+      const biome = biomeFor(state.score);
+      if (biome !== state.biome) {
+        state.biome = biome;
+        events.push('biome');
+      }
     }
   }
   return events;

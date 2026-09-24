@@ -1,16 +1,18 @@
 // Canvas renderer. Reads game state, never writes it.
-import { WORLD, DRAGON, PHYSICS, OBSTACLES, DT, RESTART_LOCK_TICKS } from './config.js';
-import { drawDragon, makeObstacleSprites } from './art.js';
+import { WORLD, DRAGON, PHYSICS, OBSTACLES, DT, RESTART_LOCK_TICKS, SCENERY } from './config.js';
+import { drawDragon, makeObstacleSprites, makeBiomeLayers, makeCanvas } from './art.js';
 import { gapRect } from './gaps.js';
 
 const VW = WORLD.width;
 const VH = WORLD.height;
 const FONT = 'Georgia, "Times New Roman", serif';
+const CROSSFADE_S = 1.5;
 
 export function createRenderer(canvas, win = window) {
   const ctx = canvas.getContext('2d', { alpha: false });
-  let k = 1, offX = 0, offY = 0, sprites = null;
-  const view = { time: 0, angle: 0, wing: 1 };
+  let k = 1, offX = 0, offY = 0, sprites = null, fade = null;
+  const layers = new Map();
+  const view = { time: 0, angle: 0, wing: 1, from: 0, to: 0, t: 1 };
 
   // Fit the 360×640 world into the window (letterboxed), at device resolution.
   function resize() {
@@ -25,6 +27,45 @@ export function createRenderer(canvas, win = window) {
     offX = Math.round((canvas.width - VW * k) / 2);
     offY = Math.round((canvas.height - VH * k) / 2);
     sprites = makeObstacleSprites(k); // pre-rendered at device resolution
+    fade = makeCanvas(VW * k, VH * k);
+    layers.clear();
+  }
+
+  // Biome layers are built lazily (first time a biome is seen) and cached.
+  function biome(i) {
+    if (!layers.has(i)) layers.set(i, makeBiomeLayers(SCENERY.biomes[i], k));
+    return layers.get(i);
+  }
+
+  function tile(c, img, dist, parallax, sy = 0, sh = VH) {
+    const x = -((dist * parallax) % VW);
+    c.drawImage(img, 0, sy * k, VW * k, sh * k, x, sy, VW, sh);
+    c.drawImage(img, 0, sy * k, VW * k, sh * k, x + VW, sy, VW, sh);
+  }
+
+  function drawBackdrop(c, i, dist) {
+    const L = biome(i);
+    tile(c, L.sky, dist, 0.03);
+    tile(c, L.far, dist, 0.18);
+    tile(c, L.near, dist, 0.5);
+  }
+
+  function drawGround(c, i, dist) {
+    tile(c, biome(i).ground, dist, 1, WORLD.groundY, VH - WORLD.groundY);
+  }
+
+  // During a biome change the incoming scenery is composited into an
+  // offscreen buffer and faded in as one image, so layers don't ghost.
+  function drawScenery(dist, paint) {
+    paint(ctx, view.t < 1 ? view.from : view.to, dist);
+    if (view.t >= 1) return;
+    const f = fade.getContext('2d');
+    f.setTransform(k, 0, 0, k, 0, 0);
+    f.clearRect(0, 0, VW, VH);
+    paint(f, view.to, dist);
+    ctx.globalAlpha = view.t;
+    ctx.drawImage(fade, 0, 0, VW * k, VH * k, 0, 0, VW, VH);
+    ctx.globalAlpha = 1;
   }
 
   // Obstacle art is cropped from tall pre-rendered pieces so it lines up
@@ -75,19 +116,29 @@ export function createRenderer(canvas, win = window) {
     view.time += frameDt;
     if (flapped) view.wing = 0;
     view.wing = Math.min(1, view.wing + frameDt * 3.2);
+    if (state.biome !== view.to) {
+      view.from = view.to;
+      view.to = state.biome;
+      view.t = 0;
+    }
+    view.t = Math.min(1, view.t + frameDt / CROSSFADE_S);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#120d1a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(k, 0, 0, k, offX, offY);
-
-    const g = ctx.createLinearGradient(0, 0, 0, WORLD.groundY);
-    g.addColorStop(0, '#7ec8f2');
-    g.addColorStop(1, '#fdf1d0');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, VW, WORLD.groundY);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, VW, VH);
+    ctx.clip(); // tiled layers must not spill into the letterbox
 
     const playing = state.mode === 'playing';
+    // Scroll distance, interpolated; the title screen drifts on its own.
+    const dist = state.mode === 'title'
+      ? view.time * 40
+      : state.distance - (playing ? state.speed * DT * (1 - alpha) : 0);
+    drawScenery(dist, drawBackdrop);
+
     if (state.mode !== 'title') {
       for (const ob of state.obstacles) {
         const x = playing ? ob.prevX + (ob.x - ob.prevX) * alpha : ob.x;
@@ -95,14 +146,7 @@ export function createRenderer(canvas, win = window) {
       }
     }
 
-    // ground, scrolling with the obstacles
-    const dist = state.distance - (playing ? state.speed * DT * (1 - alpha) : 0);
-    ctx.fillStyle = '#8b5a2b';
-    ctx.fillRect(0, WORLD.groundY, VW, VH - WORLD.groundY);
-    ctx.fillStyle = '#7a4d24';
-    for (let x = -(dist % 24); x < VW; x += 24) ctx.fillRect(x, WORLD.groundY + 22, 14, 7);
-    ctx.fillStyle = '#6db34a';
-    ctx.fillRect(0, WORLD.groundY, VW, 10);
+    drawScenery(dist, drawGround); // ground scrolls with the obstacles
 
     const d = state.dragon;
     let y = playing ? d.prevY + (d.y - d.prevY) * alpha : d.y;
@@ -119,7 +163,9 @@ export function createRenderer(canvas, win = window) {
     if (state.mode === 'title') drawTitle(state);
     else if (state.mode === 'playing') text(String(state.score), VW / 2, 78, 56);
     else drawGameOver(state);
+    ctx.restore();
   }
+
   function drawTitle(state) {
     text('KINDLEWING', VW / 2, 128, 46);
     text('Flight over Hollowmere', VW / 2, 170, 19, '#fff4dd', '#3a1d0b');
