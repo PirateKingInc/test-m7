@@ -156,7 +156,7 @@ function shade(ctx, x, y, w, h) {
   ctx.fillRect(x, y, w, h);
 }
 
-const PAINTERS = {
+export const PAINTERS = {
   tower(ctx, top, rng) {
     masonry(ctx, 0, 0, W, H, '#8d929c', '#5e626b', 14, rng);
     // arrow slits
@@ -177,11 +177,123 @@ const PAINTERS = {
     ctx.restore();
     shade(ctx, 0, 0, W, H);
   },
+  wall(ctx, top, rng) {
+    masonry(ctx, 0, 0, W, H, '#b59a74', '#7d6547', 20, rng, 14);
+    // moss & cracks
+    ctx.fillStyle = 'rgba(80,120,50,0.55)';
+    for (let i = 0; i < 18; i++) ctx.fillRect(rng() * W, rng() * H, 3 + rng() * 5, 2 + rng() * 3);
+    // breach edge: broken, stepped blocks (max 6px deep)
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let x = 0; x < W; x += 8) {
+      const d = rng() * 6;
+      ctx.fillRect(x, top ? H - d : 0, 8, d);
+    }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(40,25,10,0.35)';
+    ctx.fillRect(0, top ? H - 10 : 0, W, 4);
+    shade(ctx, 0, 0, W, H);
+  },
+  banners(ctx, top, rng) {
+    if (top) {
+      // timber gantry with two long hanging banners
+      ctx.fillStyle = '#5a3a1e';
+      ctx.fillRect(0, 0, W, H);
+      const cols = [['#b3202a', '#f2c14e'], ['#1f3f8a', '#e8e8f0']];
+      for (let i = 0; i < 2; i++) {
+        const x = i * (W / 2);
+        const [c, trim] = cols[i];
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + W / 2, 0);
+        ctx.lineTo(x + W / 2, H);
+        ctx.lineTo(x + W / 4, H - 6);
+        ctx.lineTo(x, H);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = trim;
+        ctx.fillRect(x + 2, 0, 2, H - 4);
+        ctx.fillRect(x + W / 2 - 4, 0, 2, H - 4);
+        // device: a small flame sigil every 110px
+        for (let y = H - 50; y > 0; y -= 110) {
+          ctx.beginPath();
+          ctx.moveTo(x + W / 4, y - 12);
+          ctx.quadraticCurveTo(x + W / 4 + 9, y, x + W / 4, y + 10);
+          ctx.quadraticCurveTo(x + W / 4 - 9, y, x + W / 4, y - 12);
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = '#3d2711';
+      for (let y = 30; y < H; y += 140) ctx.fillRect(0, y, W, 6);
+    } else {
+      // sharpened palisade stakes, 6px points
+      const n = 6;
+      const sw = W / n;
+      for (let i = 0; i < n; i++) {
+        ctx.fillStyle = i % 2 ? '#7a5230' : '#8c6038';
+        ctx.beginPath();
+        ctx.moveTo(i * sw, 6);
+        ctx.lineTo(i * sw + sw / 2, 0);
+        ctx.lineTo((i + 1) * sw, 6);
+        ctx.lineTo((i + 1) * sw, H);
+        ctx.lineTo(i * sw, H);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#c9a66b';
+      for (let y = 40; y < H; y += 90) ctx.fillRect(0, y, W, 4);
+      ctx.fillStyle = '#b3202a';
+      ctx.fillRect(W / 2 - 1, 8, 2, 30);
+    }
+    shade(ctx, 0, 0, W, H);
+  },
+  portcullis(ctx, top, rng) {
+    if (top) {
+      ctx.fillStyle = '#23252b';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#4b4f58';
+      for (let x = 3; x < W; x += 10) ctx.fillRect(x, 0, 4, H - 6);
+      for (let y = H - 20; y > 0; y -= 16) ctx.fillRect(0, y, W, 3);
+      // spikes at the bottom edge (6px)
+      for (let x = 3; x < W; x += 10) {
+        ctx.beginPath();
+        ctx.moveTo(x, H - 6);
+        ctx.lineTo(x + 2, H);
+        ctx.lineTo(x + 4, H - 6);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#6d717b';
+      ctx.fillRect(0, 0, 4, H);
+      ctx.fillRect(W - 4, 0, 4, H);
+    } else {
+      masonry(ctx, 0, 0, W, H, '#7c808a', '#50535b', 16, rng);
+      ctx.fillStyle = '#4a2c14';
+      ctx.beginPath();
+      ctx.moveTo(12, 70);
+      ctx.lineTo(12, 40);
+      ctx.arc(W / 2, 40, W / 2 - 12, Math.PI, 0);
+      ctx.lineTo(W - 12, 70);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#2a180a';
+      for (let x = 18; x < W - 12; x += 8) {
+        ctx.beginPath();
+        ctx.moveTo(x, 30);
+        ctx.lineTo(x, 70);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#8b8f99';
+      ctx.fillRect(0, 0, W, 8);
+    }
+    shade(ctx, 0, 0, W, H);
+  },
 };
 
 export function makeObstacleSprites(k) {
   const out = {};
-  for (const v of Object.keys(PAINTERS)) {
+  for (const v of OBSTACLES.variants) {
     const pieces = {};
     for (const top of [true, false]) {
       const c = makeCanvas(W * k, H * k);
