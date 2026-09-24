@@ -25,6 +25,10 @@ export function createGame(opts = {}) {
 export function resetRun(state, seed) {
   state.seed = seed >>> 0;
   state.rng = createRng(state.seed);
+  // Separate stream for looks only, so the choice of skin can never perturb
+  // the gap sequence.
+  state.cosmeticRng = createRng(state.seed ^ 0x9e3779b9);
+  state.lastVariant = -1;
   state.lastGapY = DRAGON.startY; // the first gap is measured from the start height
   state.mode = 'playing';
   state.dragon = { y: DRAGON.startY, vy: 0, prevY: DRAGON.startY };
@@ -58,9 +62,19 @@ function spawnObstacles(state) {
     const x = last ? last.x + OBSTACLES.spacing : OBSTACLES.firstX;
     const gapY = state.gapSource(state.rng, state.lastGapY, maxGapDeltaFor(currentStage(state)));
     state.lastGapY = gapY;
-    last = { id: state.nextId++, x, prevX: x, gapY, variant: 'tower', passed: false };
+    last = { id: state.nextId++, x, prevX: x, gapY, variant: pickVariant(state), passed: false };
     obs.push(last);
   }
+}
+
+// Cosmetic only: every variant reskins the same two hitbox rectangles.
+// Uniform over the variants other than the previous one (no repeats).
+function pickVariant(state) {
+  const n = OBSTACLES.variants.length;
+  let v = Math.floor(state.cosmeticRng() * (n - 1));
+  if (state.lastVariant >= 0 && v >= state.lastVariant) v++;
+  state.lastVariant = v;
+  return OBSTACLES.variants[v];
 }
 
 // First obstacle whose solid parts overlap the box, or null.
