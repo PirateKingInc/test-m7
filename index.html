@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#120d1a">
+  <meta name="description" content="Kindlewing: Flight over Hollowmere — a one-button dragon flyer.">
+  <title>Kindlewing — Flight over Hollowmere</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='18' r='11' fill='%23e2652a'/%3E%3Cpath d='M16 3c5 6 9 9 4 15h-8c-5-6 0-9 4-15z' fill='%23ffcf5a'/%3E%3C/svg%3E">
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #120d1a;
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    canvas { display: block; touch-action: none; cursor: pointer; }
+    noscript { color: #f3e2b8; font: 16px Georgia, serif; position: absolute; top: 40%; width: 100%; text-align: center; }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="Kindlewing game. Tap, click or press Space to flap."></canvas>
+  <noscript>Kindlewing needs JavaScript to fly.</noscript>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
