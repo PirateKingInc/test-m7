@@ -3,13 +3,24 @@
 import { DT } from './config.js';
 import { createGame, step } from './game.js';
 import { createRenderer } from './render.js';
+import { loadBest, saveBest } from './storage.js';
+
+// Even touching window.localStorage can throw (e.g. blocked cookies).
+function getStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+const storage = getStorage();
 
 // ?seed=N replays a specific gap sequence; otherwise every visit is fresh.
 const seedParam = Number.parseInt(new URLSearchParams(location.search).get('seed') ?? '', 10);
 const seed = Number.isFinite(seedParam) ? seedParam : (Math.random() * 2 ** 32) >>> 0;
 
 const canvas = document.getElementById('game');
-const state = createGame({ seed });
+const state = createGame({ seed, best: loadBest(storage) });
 const renderer = createRenderer(canvas);
 window.kindlewing = { state }; // handy for debugging and browser smoke tests
 
@@ -54,6 +65,7 @@ function frame(now) {
     flapQueued = false;
     acc -= DT;
     if (events.includes('flap')) flapped = true;
+    if (events.includes('hit') && state.newBest) saveBest(storage, state.best);
   }
   renderer.draw(state, acc / DT, dt, flapped);
   requestAnimationFrame(frame);
