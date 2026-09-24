@@ -1,5 +1,5 @@
 // Canvas renderer. Reads game state, never writes it.
-import { WORLD, DRAGON, PHYSICS, OBSTACLES, DT } from './config.js';
+import { WORLD, DRAGON, PHYSICS, OBSTACLES, DT, RESTART_LOCK_TICKS } from './config.js';
 import { drawDragon, makeObstacleSprites } from './art.js';
 import { gapRect } from './gaps.js';
 
@@ -37,16 +37,38 @@ export function createRenderer(canvas, win = window) {
     ctx.drawImage(sp.bottom, 0, 0, W * k, (H - bottom) * k, x, bottom, W, H - bottom);
   }
 
-  function text(str, x, y, size) {
+  function text(str, x, y, size, fill = '#ffd66b', stroke = '#3a1d0b', align = 'center') {
     ctx.font = `bold ${size}px ${FONT}`;
-    ctx.textAlign = 'center';
+    ctx.textAlign = align;
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     ctx.lineWidth = Math.max(3, size / 7);
-    ctx.strokeStyle = '#3a1d0b';
+    ctx.strokeStyle = stroke;
     ctx.strokeText(str, x, y);
-    ctx.fillStyle = '#ffd66b';
+    ctx.fillStyle = fill;
     ctx.fillText(str, x, y);
+  }
+
+  function panel(x, y, w, h) {
+    ctx.fillStyle = 'rgba(30,15,5,0.35)';
+    roundRect(x + 4, y + 6, w, h, 14);
+    ctx.fill();
+    ctx.fillStyle = '#f3e2b8';
+    roundRect(x, y, w, h, 14);
+    ctx.fill();
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#7a4b1f';
+    ctx.stroke();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   function draw(state, alpha, frameDt, flapped) {
@@ -94,9 +116,57 @@ export function createRenderer(canvas, win = window) {
     drawDragon(ctx, state.mode === 'title' ? 0.5 + 0.5 * Math.sin(view.time * 9) : view.wing);
     ctx.restore();
 
-    if (state.mode === 'title') text('KINDLEWING', VW / 2, 128, 46);
-    if (state.mode !== 'playing') text('Tap to fly', VW / 2, 480, 26);
+    if (state.mode === 'title') drawTitle(state);
+    else if (state.mode === 'playing') text(String(state.score), VW / 2, 78, 56);
+    else drawGameOver(state);
   }
+  function drawTitle(state) {
+    text('KINDLEWING', VW / 2, 128, 46);
+    text('Flight over Hollowmere', VW / 2, 170, 19, '#fff4dd', '#3a1d0b');
+    panel(50, 380, VW - 100, 118);
+    ctx.fillStyle = '#5a3212';
+    ctx.font = `bold 17px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Help Ashby cross the kingdom!', VW / 2, 408);
+    ctx.font = `15px ${FONT}`;
+    ctx.fillText('Tap · Click · Space to flap', VW / 2, 436);
+    ctx.fillText(`Best: ${state.best}`, VW / 2, 462);
+    if (Math.sin(view.time * 5) > -0.4) text('Tap to fly', VW / 2, 535, 26);
+  }
+
+  function drawGameOver(state) {
+    const show = Math.min(1, state.overTicks / 18);
+    ctx.globalAlpha = show;
+    ctx.fillStyle = 'rgba(20,10,30,0.35)';
+    ctx.fillRect(0, 0, VW, VH);
+    const py = 170 + (1 - show) * 40;
+    text('GROUNDED!', VW / 2, py - 32, 40);
+    panel(60, py, VW - 120, 200);
+    ctx.fillStyle = '#5a3212';
+    ctx.textAlign = 'center';
+    ctx.font = `bold 16px ${FONT}`;
+    ctx.fillText('SCORE', VW / 2 - 60, py + 36);
+    ctx.fillText('BEST', VW / 2 + 60, py + 36);
+    ctx.font = `bold 44px ${FONT}`;
+    ctx.fillText(String(state.score), VW / 2 - 60, py + 82);
+    ctx.fillText(String(state.best), VW / 2 + 60, py + 82);
+    if (state.newBest) {
+      ctx.fillStyle = '#b3202a';
+      roundRect(VW / 2 - 62, py + 112, 124, 28, 8);
+      ctx.fill();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.font = `bold 16px ${FONT}`;
+      ctx.fillText('NEW BEST!', VW / 2, py + 130);
+    }
+    ctx.fillStyle = '#8a6a4a';
+    ctx.font = `12px ${FONT}`;
+    ctx.fillText(`seed ${state.seed}`, VW / 2, py + 180);
+    ctx.globalAlpha = 1;
+    if (state.overTicks >= RESTART_LOCK_TICKS && Math.sin(view.time * 5) > -0.4) {
+      text('Tap to fly again', VW / 2, py + 250, 26);
+    }
+  }
+
 
   resize();
   return { draw, resize };
