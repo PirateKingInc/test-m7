@@ -4,6 +4,7 @@ import { DT } from './config.js';
 import { createGame, step } from './game.js';
 import { createRenderer } from './render.js';
 import { loadBest, saveBest } from './storage.js';
+import { createAudio } from './audio.js';
 
 // Even touching window.localStorage can throw (e.g. blocked cookies).
 function getStorage() {
@@ -22,11 +23,13 @@ const seed = Number.isFinite(seedParam) ? seedParam : (Math.random() * 2 ** 32) 
 const canvas = document.getElementById('game');
 const state = createGame({ seed, best: loadBest(storage) });
 const renderer = createRenderer(canvas);
+const audio = createAudio(window.AudioContext || window.webkitAudioContext);
 window.kindlewing = { state }; // handy for debugging and browser smoke tests
 
 // ---- the single input: tap / click / Space --------------------------------
 let flapQueued = false;
 function press() {
+  audio.unlock(); // browsers only allow audio to start inside a user gesture
   flapQueued = true;
 }
 window.addEventListener('pointerdown', (e) => {
@@ -65,7 +68,11 @@ function frame(now) {
     flapQueued = false;
     acc -= DT;
     if (events.includes('flap')) flapped = true;
-    if (events.includes('hit') && state.newBest) saveBest(storage, state.best);
+    if (events.includes('hit') && state.newBest) {
+      saveBest(storage, state.best);
+      events.push('newBest');
+    }
+    audio.onEvents(events);
   }
   renderer.draw(state, acc / DT, dt, flapped);
   requestAnimationFrame(frame);
